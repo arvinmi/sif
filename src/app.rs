@@ -160,7 +160,7 @@ impl App {
       current_request_id: None,
       cancellation_token: CancellationToken::new(),
       last_token_update: Instant::now(),
-      token_update_debounce: Duration::from_millis(100),
+      token_update_debounce: Duration::from_millis(300),
     })
   }
 
@@ -329,11 +329,22 @@ impl App {
 
     self.state.individual_token_counts = new_token_counts;
 
+    // limit the number of files to process
+    // if user selects too many files, only process a subset for token calc
+    const MAX_FILES_FOR_TOKEN_CALC: usize = 1000;
+    let files_to_process = if files.len() > MAX_FILES_FOR_TOKEN_CALC {
+      // take first 1000 files and show a message
+      self.set_status_message(format!("Token calculation limited to {} files (selected {})", MAX_FILES_FOR_TOKEN_CALC, files.len()));
+      files.into_iter().take(MAX_FILES_FOR_TOKEN_CALC).collect()
+    } else {
+      files
+    };
+
     // group files by directory for batching
     let mut directory_batches: std::collections::HashMap<PathBuf, Vec<PathBuf>> = std::collections::HashMap::new();
     let mut individual_files = Vec::new();
 
-    for file_path in files {
+    for file_path in files_to_process {
       if !self.state.individual_token_counts.contains_key(&file_path) {
         // mark as none to indicate calculation is pending
         self.state.individual_token_counts.insert(file_path.clone(), None);
@@ -347,30 +358,32 @@ impl App {
       }
     }
 
-    // send directory batches
+    // send directory batches with queue throttling
+    let mut files_queued = 0;
     for (_directory, dir_files) in directory_batches {
-      if dir_files.len() > 3 {
-        // if have many files in the same directory, process as a batch
-        for file_path in dir_files {
-          if self.token_request_sender.send(file_path).is_err() {
-            break;
-          }
+      for file_path in dir_files {
+        if files_queued >= MAX_FILES_FOR_TOKEN_CALC {
+          break;
         }
-      } else {
-        // for small directories, process individually
-        for file_path in dir_files {
-          if self.token_request_sender.send(file_path).is_err() {
-            break;
-          }
+        if self.token_request_sender.send(file_path).is_err() {
+          break;
         }
+        files_queued += 1;
+      }
+      if files_queued >= MAX_FILES_FOR_TOKEN_CALC {
+        break;
       }
     }
 
-    // send individual files
+    // send individual files with queue throttling
     for file_path in individual_files {
+      if files_queued >= MAX_FILES_FOR_TOKEN_CALC {
+        break;
+      }
       if self.token_request_sender.send(file_path).is_err() {
         break;
       }
+      files_queued += 1;
     }
 
     // queue directory calculations for directories with selected descendants
@@ -614,9 +627,15 @@ impl App {
         return Ok(true);
       }
       KeyCode::Char('A') => {
-        // select all visible files only
-        crate::file_utils::select_all_visible_files(&mut self.state.file_tree, &self.state.visible_paths);
-        self.set_status_message("Selected all visible files".to_string());
+        // select all visible items (files and directories)
+        match crate::file_utils::select_all_visible_files(&mut self.state.file_tree, &self.state.visible_paths) {
+          Ok(()) => {
+            self.set_status_message("Selected all items".to_string());
+          }
+          Err(e) => {
+            self.set_status_message(format!("Error selecting items: {}", e));
+          }
+        }
         // update token count since selections changed
         if let Err(e) = self.update_token_count_debounced() {
           self.set_status_message(format!("Error: token count error {}", e));
@@ -710,7 +729,9 @@ impl App {
           if let Some(node) = self.state.file_tree.get(&clicked_path) {
             if node.is_directory {
               // for directories, check if click was on expansion icon or name
-              let indent_width = node.depth * 2; // 2 spaces per depth level
+              // adjust depth for rootless tree view
+              let display_depth = node.depth.saturating_sub(1);
+              let indent_width = display_depth * 2; // 2 spaces per depth level
               let icon_start = indent_width;
               let icon_end = icon_start + 3; // "[+]" or "[-]" is 3 characters
 

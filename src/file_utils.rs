@@ -97,7 +97,7 @@ fn build_parent_child_relationships(file_tree: &mut HashMap<PathBuf, FileNode>, 
 }
 
 /// Determines if a file should be skipped during scanning.
-/// Only skips files that would cause technical issues.
+/// Only skips files that would cause technical issues or performance problems.
 /// Respects user choice for everything else.
 fn should_skip_file(path: &Path) -> bool {
   let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
@@ -109,6 +109,38 @@ fn should_skip_file(path: &Path) -> bool {
 
   // always skip .gitignore
   if file_name == ".gitignore" {
+    return true;
+  }
+
+  // skip common large build/dependency directories that cause performance issues
+  // these typically contain thousands of generated files that users don't want to process
+  // TODO: make this configurable, or test speedups for token counter
+  let large_dirs_to_skip = [
+    "target",
+    "node_modules",
+    "build",
+    "dist",
+    ".next",
+    ".nuxt",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".tox",
+    "venv",
+    ".venv",
+    "env",
+    ".env",
+    "coverage",
+    ".coverage",
+    "tmp",
+    "temp",
+    ".tmp",
+    "logs",
+    ".DS_Store",
+    "Thumbs.db",
+  ];
+
+  if large_dirs_to_skip.iter().any(|&skip_name| file_name.eq_ignore_ascii_case(skip_name)) {
     return true;
   }
 
@@ -128,9 +160,17 @@ fn should_skip_file(path: &Path) -> bool {
 pub fn flatten_visible_tree(file_tree: &HashMap<PathBuf, FileNode>, root_path: &Path) -> Vec<PathBuf> {
   let mut visible_paths = Vec::new();
 
-  // start with the root dir
+  // start with the root dir's children instead of the root itself
+  // creates a rootless tree view
   if let Some(root_node) = file_tree.get(root_path) {
-    flatten_node_recursive(file_tree, root_node, &mut visible_paths);
+    if root_node.is_directory && root_node.is_expanded {
+      // add each child of the root directory
+      for child_path in &root_node.children {
+        if let Some(child_node) = file_tree.get(child_path) {
+          flatten_node_recursive(file_tree, child_node, &mut visible_paths);
+        }
+      }
+    }
   }
 
   visible_paths
@@ -287,20 +327,40 @@ pub fn collapse_all_directories(file_tree: &mut HashMap<PathBuf, FileNode>) {
   }
 }
 
-/// Selects all files that are currently visible in the file tree.
-/// Only selects files that the user can actually see, not hidden files.
-pub fn select_all_visible_files(file_tree: &mut HashMap<PathBuf, FileNode>, visible_files: &[PathBuf]) {
+/// Selects all items (files and directories) that are currently visible in the file tree.
+/// For directories, select all their contents.
+pub fn select_all_visible_files(file_tree: &mut HashMap<PathBuf, FileNode>, visible_files: &[PathBuf]) -> Result<()> {
   // first, unselect everything
   unselect_all_items(file_tree);
 
-  // then select only the visible files (not directories)
+  // select each visible item and all its contents
   for path in visible_files {
-    if let Some(node) = file_tree.get_mut(path) {
-      if !node.is_directory {
-        node.is_selected = true;
+    if let Some(node) = file_tree.get(path) {
+      if !node.is_selected {
+        set_selection_recursive(file_tree, path, true)?;
       }
     }
   }
+
+  Ok(())
+}
+
+/// Sets the selection state of a file or directory recursively.
+/// For directories, apply the same selection state to all children.
+fn set_selection_recursive(file_tree: &mut HashMap<PathBuf, FileNode>, path: &Path, selection_state: bool) -> Result<()> {
+  if let Some(node) = file_tree.get_mut(path) {
+    node.is_selected = selection_state;
+
+    // if is a directory, apply the same selection to all children
+    if node.is_directory {
+      let children = node.children.clone();
+      for child_path in children {
+        set_selection_recursive(file_tree, &child_path, selection_state)?;
+      }
+    }
+  }
+
+  Ok(())
 }
 
 /// Unselects all files and dirs in the file tree.

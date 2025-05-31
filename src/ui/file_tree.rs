@@ -212,8 +212,11 @@ fn create_list_item(path: &PathBuf, file_tree: &HashMap<PathBuf, FileNode>, indi
   // get node from file tree
   let node = file_tree.get(path).unwrap();
 
-  // create indentation based on depth (2 spaces per level)
-  let indent = "  ".repeat(node.depth);
+  // adjust depth for rootless tree view (subtract 1 since we skip the root directory)
+  let display_depth = node.depth.saturating_sub(1);
+
+  // create indentation based on adjusted depth (2 spaces per level)
+  let indent = "  ".repeat(display_depth);
 
   // choose appropriate icon and color based on file type and state
   let (icon, base_style) = if node.is_directory {
@@ -225,8 +228,8 @@ fn create_list_item(path: &PathBuf, file_tree: &HashMap<PathBuf, FileNode>, indi
       Color::White
     } else if node.is_selected {
       Color::Green // fully selected directory
-    } else if node.depth > 0 && *dir_descendants_map.get(path).unwrap_or(&false) {
-      Color::Yellow // directory with some selected children (but not root)
+    } else if display_depth > 0 && *dir_descendants_map.get(path).unwrap_or(&false) {
+      Color::Yellow // directory with some selected children
     } else {
       Color::Cyan // unselected directory
     };
@@ -246,14 +249,10 @@ fn create_list_item(path: &PathBuf, file_tree: &HashMap<PathBuf, FileNode>, indi
   };
 
   // get token count for item
-  // show for selected items or directories with selected descendants (not root)
+  // show for selected items or directories with selected descendants
   let should_show_tokens = if node.is_directory {
-    // don't show token counts for root directory (depth 0)
-    if node.depth == 0 {
-      false
-    } else {
-      node.is_selected || *dir_descendants_map.get(path).unwrap_or(&false)
-    }
+    // show token counts for all directories that are selected or have selected descendants
+    node.is_selected || *dir_descendants_map.get(path).unwrap_or(&false)
   } else {
     node.is_selected
   };
