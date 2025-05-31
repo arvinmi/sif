@@ -2,6 +2,9 @@
 
 A file browser for precise code selection with repomix and yek backends.
 
+> [!Important]
+> sif is still in development and has many known bugs.
+
 ## Why sif?
 
 Find it a struggle to select the right files with complex glob patterns or config files just to select the right files for llm code ingestion? Sif solves this with a simple visual interface where **you see exactly what gets processed**.
@@ -90,8 +93,16 @@ winget install -e --id OpenJS.NodeJS.LTS
 
 ## TODO
 
+- [ ] Fix known bugs
+  - [ ] Token counting is can be slow on large repos
+  - [ ] Token counting is not accurate (race condition)
+  - [ ] Error messages (stacked errors and not descriptive)
+- [ ] Refactor codebase (file structure, design with token counting and processing, naming)
+- [ ] Fix general speed issues in large (> 1 M token count codebases)
+
+### Features
+
 - [ ] Add multiple file and directory selection
-- [ ] Fix speed issues
 - [ ] Tab switching to different backends
 - [ ] User config files for repomix and yek
 - [ ] Rewrite processing core in Rust with same feature support
