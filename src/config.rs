@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
-/// Persistent configuration for sif user preferences.
+/// Persistent configuration for siff user preferences.
 /// Stores settings that should persist between sessions.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SifConfig {
@@ -82,11 +82,12 @@ impl SifConfig {
   }
 }
 
-/// Gets the path to the sif config file.
+/// Gets the path to the siff config file.
+///
+/// Returns the path to the config file, creating parent directories if they don't exist.
 fn get_config_path() -> Result<PathBuf> {
-  let config_dir = dirs::config_dir().context("Error: could not determine config directory")?;
-
-  Ok(config_dir.join("sif").join("config.json"))
+  let config_dir = dirs::config_dir().context("Error: failed to get config directory")?;
+  Ok(config_dir.join("siff").join("config.json"))
 }
 
 // test for serialization and default config

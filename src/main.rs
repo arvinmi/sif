@@ -11,9 +11,9 @@ use anyhow::Result;
 use clap::Parser;
 use std::path::PathBuf;
 
-/// Main sif entry point
+/// Main siff entry point
 #[derive(Parser)]
-#[command(name = "sif")]
+#[command(name = "siff")]
 #[command(about = "Interactive file tree with repomix and yek as supported parsing backends")]
 #[command(version = "0.1.0")]
 #[command(long_about = None)]
@@ -70,7 +70,7 @@ async fn main() -> Result<()> {
 
   // print startup info if verbose
   if cli.verbose {
-    println!("Starting SIF...");
+    println!("Starting Siff...");
     println!("Backend: {}", backend.display_name());
     println!("Target directory: {}", target_directory.display());
     println!("Scanning for files...");
@@ -86,14 +86,14 @@ async fn main() -> Result<()> {
         eprintln!("  macOS: brew install node");
         eprintln!("  Ubuntu/Debian: sudo apt-get install nodejs npm");
         eprintln!("  Windows: Download from https://nodejs.org/");
-        eprintln!("\nAfter installing Node.js, Sif will automatically download and cache repomix.");
+        eprintln!("\nAfter installing Node.js, Siff will automatically download and cache repomix.");
         eprintln!("This is a one-time setup and subsequent runs will be fast.");
       }
       types::Backend::Yek => {
         eprintln!("\nSif includes yek integration but failed to initialize.");
         eprintln!("This is likely a build or installation issue.");
-        eprintln!("Please try reinstalling Sif:");
-        eprintln!("  cargo install --force sif");
+        eprintln!("Please try reinstalling Siff:");
+        eprintln!("  cargo install --force siff");
       }
     }
     std::process::exit(1);
@@ -157,16 +157,16 @@ mod tests {
   #[test]
   fn test_cli_parsing() {
     // test default case
-    let cli = Cli::parse_from(&["sif"]);
+    let cli = Cli::parse_from(&["siff"]);
     assert!(cli.directory.is_none());
     assert!(!cli.verbose);
 
     // test with directory
-    let cli = Cli::parse_from(&["sif", "/tmp"]);
+    let cli = Cli::parse_from(&["siff", "/tmp"]);
     assert_eq!(cli.directory, Some(PathBuf::from("/tmp")));
 
     // test with verbose flag
-    let cli = Cli::parse_from(&["sif", "--verbose"]);
+    let cli = Cli::parse_from(&["siff", "--verbose"]);
     assert!(cli.verbose);
   }
 }

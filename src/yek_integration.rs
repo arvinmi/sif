@@ -24,7 +24,7 @@ impl Yek {
     let build_binary_path = env!("YEK_BINARY_PATH");
 
     // create a runtime directory for the binary
-    let runtime_dir = dirs::cache_dir().unwrap_or_else(|| PathBuf::from(".")).join("sif").join("bin");
+    let runtime_dir = dirs::cache_dir().unwrap_or_else(|| PathBuf::from(".")).join("siff").join("bin");
 
     std::fs::create_dir_all(&runtime_dir).context("Failed to create runtime directory")?;
 

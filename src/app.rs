@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, Mutex};
 use tokio_util::sync::CancellationToken;
 
-/// Main app struct that manages the entire sif app.
+/// Main app struct that manages the entire siff app.
 /// Coordinates between the UI, file system, and backend
 pub struct App {
   /// Current app state
@@ -1308,7 +1308,7 @@ pub fn restore_terminal(_terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) 
   Ok(())
 }
 
-/// Runs the sif app, sets up terminal, runs the app, and cleans up.
+/// Runs the siff app, sets up terminal, runs the app, and cleans up.
 pub async fn run_app(root_path: &Path, backend: crate::types::Backend) -> Result<()> {
   // setup terminal
   let mut terminal = setup_terminal()?;

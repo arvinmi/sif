@@ -1,11 +1,11 @@
 [package]
-name = "sif"
+name = "siff"
 version = "0.1.0"
 edition = "2021"
 description = "Interactive file browser with repomix and yek as supported parsing backends"
 authors = ["Arvin <hello@arvinmir.com>"]
 license = "MIT"
-repository = "https://github.com/arvinmi/sif"
+repository = "https://github.com/arvinmi/siff"
 readme = "README.md"
 keywords = ["repomix", "yek", "file-tree"]
 categories = ["development-tools", "command-line-utilities"]

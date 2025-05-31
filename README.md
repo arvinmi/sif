@@ -1,13 +1,13 @@
-# sif
+# siff
 
 A file browser for precise code selection with repomix and yek backends.
 
 > [!Important]
-> sif is still in development and has many known bugs.
+> siff is still in development and has many known bugs.
 
-## Why sif?
+## Why siff?
 
-Find it a struggle to select the right files with complex glob patterns or config files just to select the right files for llm code ingestion? Sif solves this with a simple visual interface where **you see exactly what gets processed**.
+Find it a struggle to select the right files with complex glob patterns or config files just to select the right files for llm code ingestion? Siff solves this with a simple visual interface where **you see exactly what gets processed**.
 
 Instead of this mess:
 
@@ -18,13 +18,13 @@ repomix --include "**/*.py" --exclude "**/tests/**" --exclude "**/venv/**" --rem
 Just do this:
 
 ```bash
-sif
+siff
 ```
 
 ## Features
 
 - Visual file selection, if you select it, it gets included
-- Never shows `.gitignore` or `.git` in sif file tree
+- Never shows `.gitignore` or `.git` in siff file tree
 - Zero config, downloads tools needed automatically
 - Dual backend support, repomix and yek for features and speed
 - Efficient file tree navigation for large codebases
@@ -34,11 +34,11 @@ sif
 ## Installation
 
 ```bash
-cargo install sif
+cargo install siff
 ```
 
 > [!NOTE]
-> sif requires Node.js to be installed for repomix backend.
+> siff requires Node.js to be installed for repomix backend.
 
 macOS:
 
@@ -76,7 +76,7 @@ winget install -e --id OpenJS.NodeJS.LTS
 | `q`            | Quit                        |
 
 > [!NOTE]
-> sif does have mouse support for file selection, collapse/expand directories, and scrolling.
+> siff does have mouse support for file selection, collapse/expand directories, and scrolling.
 
 ## Backends
 
@@ -113,25 +113,25 @@ Open to all feature requests and bug reports. Please submit any changes as a det
 
 ## Cache issues
 
-To completely reset sif's cache (including repomix installations and file metadata), run these commands for your operating system.
+To completely reset siff's cache (including repomix installations and file metadata), run these commands for your operating system.
 
 macOS:
 
 ```bash
-rm -rf ~/Library/Caches/sif/
+rm -rf ~/Library/Caches/siff/
 ```
 
 Linux:
 
 ```bash
-rm -rf ~/.cache/sif/
-rm -rf ~/.local/share/sif/
+rm -rf ~/.cache/siff/
+rm -rf ~/.local/share/siff/
 ```
 
 Windows:
 
 ```bash
-rmdir /s %LOCALAPPDATA%\sif\
+rmdir /s %LOCALAPPDATA%\siff\
 ```
 
 ## Inspiration

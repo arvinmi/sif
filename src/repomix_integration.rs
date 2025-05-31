@@ -18,7 +18,7 @@ pub enum DownloadStatus {
 }
 
 /// Repomix manager that downloads, caches, and runs repomix in complete isolation.
-/// Makes sure sif has full control over repomix behavior without config interference.
+/// Makes sure siff has full control over repomix behavior without config interference.
 pub struct Repomix {
   /// Path to cached repomix installation
   cache_dir: PathBuf,
@@ -37,8 +37,8 @@ impl Repomix {
     // pin to the v0.3.7 for repomix
     let version = "0.3.7".to_string();
 
-    // create cache dir: ~/.cache/sif/repomix/0.3.7/
-    let cache_dir = dirs::cache_dir().unwrap_or_else(|| PathBuf::from(".")).join("sif").join("repomix").join(&version);
+    // create cache dir: ~/.cache/siff/repomix/0.3.7/
+    let cache_dir = dirs::cache_dir().unwrap_or_else(|| PathBuf::from(".")).join("siff").join("repomix").join(&version);
 
     // repomix entry point will be at node_modules/repomix/bin/repomix.cjs
     let repomix_entry = cache_dir.join("node_modules").join("repomix").join("bin").join("repomix.cjs");
@@ -126,7 +126,7 @@ impl Repomix {
 
     let package_json = format!(
       r#"{{
-            "name": "sif-repomix-cache",
+            "name": "siff-repomix-cache",
             "version": "1.0.0",
             "dependencies": {{
                 "repomix": "{}"
@@ -194,7 +194,7 @@ impl Repomix {
     Ok(())
   }
 
-  /// Runs repomix with complete isolation and sif only configuration.
+  /// Runs repomix with complete isolation and siff only configuration.
   /// Main entry point that replaces the old repomix runner.
   pub async fn run_isolated_repomix(&mut self, selected_files: &[PathBuf], options: &RepomixOptions, working_directory: &Path, file_tree: &std::collections::HashMap<PathBuf, crate::types::FileNode>) -> Result<String> {
     if selected_files.is_empty() {
@@ -215,7 +215,7 @@ impl Repomix {
       .arg(&repomix_path)
       .args(&args)
       .env_clear() // clear all env vars
-      .envs(&env) // only sif controlled env vars
+      .envs(&env) // only siff controlled env vars
       .current_dir(working_directory)
       .output()
       .await
@@ -239,7 +239,7 @@ impl Repomix {
     }
 
     // read the output file
-    let temp_file = working_directory.join(format!("sif-repomix-{}.md", std::process::id()));
+    let temp_file = working_directory.join(format!("siff-repomix-{}.md", std::process::id()));
     if !temp_file.exists() {
       return Err(anyhow::anyhow!("Repomix did not create the expected output file"));
     }
@@ -276,19 +276,19 @@ impl Repomix {
     Ok(format!("{} files processed and copied to clipboard", selected_files.len()))
   }
 
-  /// Builds command arguments with complete sif control and no config interference.
+  /// Builds command arguments with complete siff control and no config interference.
   fn build_isolated_args(&self, selected_files: &[PathBuf], options: &RepomixOptions, working_directory: &Path) -> Result<Vec<String>> {
     let mut args = vec![
       "--no-gitignore".to_string(),
       "--no-default-patterns".to_string(),
       "--no-directory-structure".to_string(),
-      // Note: repomix runs security-check by default. Since sif is opinionated, keep these check enabled by default.
+      // Note: repomix runs security-check by default. Since siff is opinionated, keep these check enabled by default.
       // TODO: could add this as option in repomix config
       "--output".to_string(),
-      working_directory.join(format!("sif-repomix-{}.md", std::process::id())).to_string_lossy().to_string(),
+      working_directory.join(format!("siff-repomix-{}.md", std::process::id())).to_string_lossy().to_string(),
     ];
 
-    // add sif controlled options only
+    // add siff controlled options only
     if options.compress {
       args.push("--compress".to_string());
     }
@@ -430,7 +430,7 @@ impl Repomix {
     env.insert("NO_COLOR".to_string(), "1".to_string());
 
     // create a fake home dir to avoid global config
-    let temp_home = std::env::temp_dir().join("sif-fake-home");
+    let temp_home = std::env::temp_dir().join("siff-fake-home");
     std::fs::create_dir_all(&temp_home).ok(); // ignore errors
     env.insert("HOME".to_string(), temp_home.to_string_lossy().to_string());
     env.insert("USERPROFILE".to_string(), temp_home.to_string_lossy().to_string());

@@ -2,7 +2,7 @@
 *.log
 *.tmp
 *.tar.gz
-sif.toml
+siff.toml
 dist/
 /*.txt
 TODO.md
