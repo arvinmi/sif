@@ -12,6 +12,8 @@ pub struct SifConfig {
   pub compress: bool,
   /// whether to remove comments
   pub remove_comments: bool,
+  /// whether to include file tree in output
+  pub include_file_tree: bool,
   /// output format for repomix
   pub output_format: OutputFormat,
   /// last used backend
@@ -24,6 +26,7 @@ impl Default for SifConfig {
     Self {
       compress: false,
       remove_comments: false,
+      include_file_tree: false,
       output_format: OutputFormat::Xml,
       default_backend: Backend::Repomix,
     }
@@ -70,9 +73,10 @@ impl SifConfig {
   }
 
   /// Updates the config with new repomix options and saves.
-  pub fn update_repomix_options(&mut self, compress: bool, remove_comments: bool, output_format: OutputFormat) -> Result<()> {
+  pub fn update_repomix_options(&mut self, compress: bool, remove_comments: bool, include_file_tree: bool, output_format: OutputFormat) -> Result<()> {
     self.compress = compress;
     self.remove_comments = remove_comments;
+    self.include_file_tree = include_file_tree;
     self.output_format = output_format;
     self.save()
   }
@@ -96,6 +100,7 @@ mod tests {
     let config = SifConfig {
       compress: true,
       remove_comments: false,
+      include_file_tree: true,
       output_format: OutputFormat::Markdown,
       default_backend: Backend::Yek,
     };
@@ -109,6 +114,7 @@ mod tests {
     let deserialized: SifConfig = serde_json::from_str(&json).unwrap();
     assert_eq!(deserialized.compress, true);
     assert_eq!(deserialized.remove_comments, false);
+    assert_eq!(deserialized.include_file_tree, true);
     assert_eq!(deserialized.output_format, OutputFormat::Markdown);
     assert_eq!(deserialized.default_backend, Backend::Yek);
   }
@@ -118,6 +124,7 @@ mod tests {
     let config = SifConfig::default();
     assert_eq!(config.compress, false);
     assert_eq!(config.remove_comments, false);
+    assert_eq!(config.include_file_tree, true);
     assert_eq!(config.output_format, OutputFormat::Xml);
     assert_eq!(config.default_backend, Backend::Repomix);
   }

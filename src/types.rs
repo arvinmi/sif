@@ -53,7 +53,7 @@ impl OutputFormat {
   /// Returns the repomix command line flag for format.
   pub fn repomix_flag(&self) -> Option<&'static str> {
     match self {
-      OutputFormat::PlainText => None, // repomix's default format
+      OutputFormat::PlainText => Some("--style=plain"),
       OutputFormat::Markdown => Some("--style=markdown"),
       OutputFormat::Xml => Some("--style=xml"),
     }
@@ -88,6 +88,8 @@ pub struct RepomixOptions {
   pub compress: bool,
   /// whether to remove comments from source code
   pub remove_comments: bool,
+  /// whether to include complete file tree in output
+  pub file_tree: bool,
   /// Custom output filename (if not specified, repomix uses default)
   pub output_file: Option<String>,
   /// Output format for the generated file
@@ -145,6 +147,7 @@ impl Default for RepomixOptions {
     Self {
       compress: false,
       remove_comments: false,
+      file_tree: false,
       output_file: None,
       output_format: OutputFormat::default(),
       backend: Backend::default(),
@@ -189,6 +192,8 @@ pub struct BackendRequest {
   pub selected_files: Vec<PathBuf>,
   /// Root directory path
   pub root_path: PathBuf,
+  /// Complete file tree for generating directory structure
+  pub file_tree: HashMap<PathBuf, FileNode>,
   /// Unique request id for cancellation
   pub request_id: u64,
   /// Cancellation token to immediately stop the process

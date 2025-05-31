@@ -196,7 +196,7 @@ impl Repomix {
 
   /// Runs repomix with complete isolation and sif only configuration.
   /// Main entry point that replaces the old repomix runner.
-  pub async fn run_isolated_repomix(&mut self, selected_files: &[PathBuf], options: &RepomixOptions, working_directory: &Path) -> Result<String> {
+  pub async fn run_isolated_repomix(&mut self, selected_files: &[PathBuf], options: &RepomixOptions, working_directory: &Path, file_tree: &std::collections::HashMap<PathBuf, crate::types::FileNode>) -> Result<String> {
     if selected_files.is_empty() {
       return Err(anyhow::anyhow!("No files selected for processing"));
     }
@@ -244,7 +244,28 @@ impl Repomix {
       return Err(anyhow::anyhow!("Repomix did not create the expected output file"));
     }
 
-    let content = std::fs::read_to_string(&temp_file).context("Failed to read repomix output file")?;
+    let mut content = std::fs::read_to_string(&temp_file).context("Failed to read repomix output file")?;
+
+    // if file tree is enabled, prepend it to the content
+    if options.file_tree {
+      let file_tree_text = crate::file_utils::generate_file_tree_text(file_tree, working_directory);
+
+      // format the file tree section based on output format
+      let formatted_tree = match options.output_format {
+        crate::types::OutputFormat::Xml => {
+          format!("<directory_structure>\n{}</directory_structure>\n\n", file_tree_text)
+        }
+        crate::types::OutputFormat::Markdown => {
+          format!("## Directory Structure\n\n```\n{}\n```\n\n", file_tree_text)
+        }
+        crate::types::OutputFormat::PlainText => {
+          format!("Directory Structure:\n{}\n", file_tree_text)
+        }
+      };
+
+      // prepend the file tree to the existing content
+      content = format!("{}{}", formatted_tree, content);
+    }
 
     // copy to clipboard
     self.copy_to_clipboard(&content).await?;
@@ -258,9 +279,9 @@ impl Repomix {
   /// Builds command arguments with complete sif control and no config interference.
   fn build_isolated_args(&self, selected_files: &[PathBuf], options: &RepomixOptions, working_directory: &Path) -> Result<Vec<String>> {
     let mut args = vec![
-      // disable repomix's built-in filtering
       "--no-gitignore".to_string(),
       "--no-default-patterns".to_string(),
+      "--no-directory-structure".to_string(),
       // Note: repomix runs security-check by default. Since sif is opinionated, keep these check enabled by default.
       // TODO: could add this as option in repomix config
       "--output".to_string(),

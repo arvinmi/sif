@@ -198,8 +198,8 @@ pub fn get_selected_files(file_tree: &HashMap<PathBuf, FileNode>) -> Vec<PathBuf
   file_tree
     .values()
     .filter(|node| node.is_selected && !node.is_directory)
+    .filter(|node| is_text_file(&node.path))
     .map(|node| node.path.clone())
-    .filter(|path| is_text_file(path))
     .collect()
 }
 
@@ -368,6 +368,98 @@ fn set_selection_recursive(file_tree: &mut HashMap<PathBuf, FileNode>, path: &Pa
 pub fn unselect_all_items(file_tree: &mut HashMap<PathBuf, FileNode>) {
   for node in file_tree.values_mut() {
     node.is_selected = false;
+  }
+}
+
+/// Creates a file tree structure as text for repomix output.
+/// Uses a format similar to the `tree` command.
+pub fn generate_file_tree_text(file_tree: &HashMap<PathBuf, FileNode>, root_path: &Path) -> String {
+  let mut result = String::new();
+
+  // get the root directory name
+  let root_name = root_path.file_name().and_then(|name| name.to_str()).unwrap_or(".");
+
+  result.push_str(&format!("{}/\n", root_name));
+
+  // get root node and generate tree from its children
+  if let Some(root_node) = file_tree.get(root_path) {
+    if root_node.is_directory {
+      // collect and sort children for consistent output
+      let mut children: Vec<&PathBuf> = root_node.children.iter().collect();
+      children.sort_by(|a, b| {
+        let a_name = a.file_name().unwrap_or_default();
+        let b_name = b.file_name().unwrap_or_default();
+
+        // get node types for sorting (directories first)
+        let a_is_dir = file_tree.get(*a).map(|n| n.is_directory).unwrap_or(false);
+        let b_is_dir = file_tree.get(*b).map(|n| n.is_directory).unwrap_or(false);
+
+        match (a_is_dir, b_is_dir) {
+          // directories first
+          (true, false) => std::cmp::Ordering::Less,
+          // files second
+          (false, true) => std::cmp::Ordering::Greater,
+          // alphabetical within same type
+          _ => a_name.cmp(&b_name),
+        }
+      });
+
+      // generate tree structure for each child
+      for (index, child_path) in children.iter().enumerate() {
+        let is_last = index == children.len() - 1;
+        if let Some(child_node) = file_tree.get(*child_path) {
+          generate_tree_node_recursive(file_tree, child_node, &mut result, "", is_last);
+        }
+      }
+    }
+  }
+
+  result
+}
+
+/// Recursively creates tree structure for a single node and its children.
+/// Uses box-drawing characters for a clean tree appearance.
+fn generate_tree_node_recursive(file_tree: &HashMap<PathBuf, FileNode>, node: &FileNode, result: &mut String, prefix: &str, is_last: bool) {
+  // choose the appropriate tree characters
+  let connector = if is_last { "└── " } else { "├── " };
+  let extension = if is_last { "    " } else { "│   " };
+
+  // add the current node
+  let node_name = node.name.clone();
+  let display_name = if node.is_directory { format!("{}/", node_name) } else { node_name };
+
+  result.push_str(&format!("{}{}{}\n", prefix, connector, display_name));
+
+  // if it's a directory, add its children
+  if node.is_directory {
+    // collect and sort children
+    let mut children: Vec<&PathBuf> = node.children.iter().collect();
+    children.sort_by(|a, b| {
+      let a_name = a.file_name().unwrap_or_default();
+      let b_name = b.file_name().unwrap_or_default();
+
+      // get node types for sorting (directories first)
+      let a_is_dir = file_tree.get(*a).map(|n| n.is_directory).unwrap_or(false);
+      let b_is_dir = file_tree.get(*b).map(|n| n.is_directory).unwrap_or(false);
+
+      match (a_is_dir, b_is_dir) {
+        // directories first
+        (true, false) => std::cmp::Ordering::Less,
+        // files second
+        (false, true) => std::cmp::Ordering::Greater,
+        // alphabetical within same type
+        _ => a_name.cmp(&b_name),
+      }
+    });
+
+    // create tree for each child
+    for (index, child_path) in children.iter().enumerate() {
+      let is_last_child = index == children.len() - 1;
+      if let Some(child_node) = file_tree.get(*child_path) {
+        let new_prefix = format!("{}{}", prefix, extension);
+        generate_tree_node_recursive(file_tree, child_node, result, &new_prefix, is_last_child);
+      }
+    }
   }
 }
 

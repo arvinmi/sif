@@ -61,6 +61,12 @@ pub struct App {
   last_token_update: Instant,
   /// Debounce duration to prevent excessive updates
   token_update_debounce: Duration,
+  /// Track pending token calculations
+  pending_token_calculations: std::collections::HashSet<PathBuf>,
+  /// Whether in bulk token calculation (select all/unselect all)
+  is_bulk_token_calculation: bool,
+  /// Suppress status messages during nav
+  suppress_status_messages: bool,
 }
 
 impl App {
@@ -79,6 +85,7 @@ impl App {
       backend: effective_backend.clone(),
       compress: config.compress,
       remove_comments: config.remove_comments,
+      file_tree: config.include_file_tree,
       output_format: config.output_format.clone(),
       output_file: None, // output file is not persisted (for file tree)
     };
@@ -161,6 +168,9 @@ impl App {
       cancellation_token: CancellationToken::new(),
       last_token_update: Instant::now(),
       token_update_debounce: Duration::from_millis(300),
+      pending_token_calculations: std::collections::HashSet::new(),
+      is_bulk_token_calculation: false,
+      suppress_status_messages: false,
     })
   }
 
@@ -169,11 +179,34 @@ impl App {
   pub fn update_token_count_non_blocking(&mut self) -> Result<()> {
     let selected_files = file_utils::get_selected_files(&self.state.file_tree);
 
-    // if no files selected, set count to 0 immediately
+    // if no files selected, set count to 0 and clear cache
     if selected_files.is_empty() {
       self.token_count = 0;
       self.state.individual_token_counts.clear();
+      self.pending_token_calculations.clear();
+      self.is_bulk_token_calculation = false;
+      self.suppress_status_messages = false;
       return Ok(());
+    }
+
+    // clean up cache, remove entries for files that are no longer selected
+    let mut paths_to_remove = Vec::new();
+    for (path, _) in &self.state.individual_token_counts {
+      if let Some(node) = self.state.file_tree.get(path) {
+        // remove if file is not selected and not a directory with selected descendants
+        if !node.is_selected && !(node.is_directory && self.has_selected_descendants(path)) {
+          paths_to_remove.push(path.clone());
+        }
+      } else {
+        // remove if file no longer exists
+        paths_to_remove.push(path.clone());
+      }
+    }
+
+    // remove the collected paths
+    for path in &paths_to_remove {
+      self.state.individual_token_counts.remove(path);
+      self.pending_token_calculations.remove(path);
     }
 
     // calculate total from already cached individual counts
@@ -199,15 +232,25 @@ impl App {
     // recalculate directory token counts
     self.recalculate_directory_token_counts();
 
-    // if have uncached files, show a status message but don't block
-    if !uncached_files.is_empty() {
-      self.set_status_message(format!("Calculating tokens for {} files...", uncached_files.len()));
+    // only show calculation messages during bulk operations and when not suppressed
+    if !uncached_files.is_empty() && self.is_bulk_token_calculation && !self.suppress_status_messages {
+      // message will be updated in process_token_results with progress
     }
 
     // queue individual calculations for background processing (non-blocking)
     self.queue_individual_token_calculations(selected_files);
 
     Ok(())
+  }
+
+  /// Checks if a directory has any selected descendants
+  fn has_selected_descendants(&self, dir_path: &std::path::Path) -> bool {
+    for (path, node) in &self.state.file_tree {
+      if node.is_selected && path.starts_with(dir_path) && path != dir_path {
+        return true;
+      }
+    }
+    false
   }
 
   /// Debouncing that only updates if enough time has passed.
@@ -333,12 +376,17 @@ impl App {
     // if user selects too many files, only process a subset for token calc
     const MAX_FILES_FOR_TOKEN_CALC: usize = 1000;
     let files_to_process = if files.len() > MAX_FILES_FOR_TOKEN_CALC {
-      // take first 1000 files and show a message
-      self.set_status_message(format!("Token calculation limited to {} files (selected {})", MAX_FILES_FOR_TOKEN_CALC, files.len()));
+      // only show this message during bulk operations, not regular nav
+      if self.is_bulk_token_calculation {
+        self.set_status_message(format!("Processing {} files (showing first 1000)...", files.len()));
+      }
       files.into_iter().take(MAX_FILES_FOR_TOKEN_CALC).collect()
     } else {
       files
     };
+
+      // clear pending calculations and start fresh
+    self.pending_token_calculations.clear();
 
     // group files by directory for batching
     let mut directory_batches: std::collections::HashMap<PathBuf, Vec<PathBuf>> = std::collections::HashMap::new();
@@ -348,6 +396,8 @@ impl App {
       if !self.state.individual_token_counts.contains_key(&file_path) {
         // mark as none to indicate calculation is pending
         self.state.individual_token_counts.insert(file_path.clone(), None);
+        // track this file as pending
+        self.pending_token_calculations.insert(file_path.clone());
 
         // group by parent directory for batching
         if let Some(parent) = file_path.parent() {
@@ -363,6 +413,8 @@ impl App {
     for (_directory, dir_files) in directory_batches {
       for file_path in dir_files {
         if files_queued >= MAX_FILES_FOR_TOKEN_CALC {
+          // remove from pending if we're not going to calculate it
+          self.pending_token_calculations.remove(&file_path);
           break;
         }
         if self.token_request_sender.send(file_path).is_err() {
@@ -378,6 +430,8 @@ impl App {
     // send individual files with queue throttling
     for file_path in individual_files {
       if files_queued >= MAX_FILES_FOR_TOKEN_CALC {
+        // remove from pending if we're not going to calculate it
+        self.pending_token_calculations.remove(&file_path);
         break;
       }
       if self.token_request_sender.send(file_path).is_err() {
@@ -386,7 +440,7 @@ impl App {
       files_queued += 1;
     }
 
-    // queue directory calculations for directories with selected descendants
+    // queue directory calculations for directories that should show counts
     self.queue_directory_calculations();
   }
 
@@ -415,27 +469,79 @@ impl App {
   /// Processes token calculation results from the background task (non-blocking).
   fn process_token_results(&mut self) -> bool {
     let mut processed_any = false;
-    let mut updated_files = Vec::new();
 
     // receive all available results
     while let Ok((file_path, token_count)) = self.token_result_receiver.try_recv() {
       // update individual token count
       self.state.individual_token_counts.insert(file_path.clone(), Some(token_count));
-      updated_files.push((file_path, token_count));
+      // remove from pending calculations
+      self.pending_token_calculations.remove(&file_path);
       processed_any = true;
     }
 
-    // if processed any results, incrementally update directory totals
+    // only recalculate totals if we processed results and no calculations are pending
     if processed_any {
-      // build the descendants map once for all files being processed
-      let dir_descendants_map = self.build_directories_with_descendants_map();
+      if self.pending_token_calculations.is_empty() {
+        // all calculations complete, recalculate totals
+        self.recalculate_final_token_totals();
 
-      for (file_path, token_count) in updated_files {
-        self.add_file_tokens_to_directories_with_selections(&file_path, token_count, &dir_descendants_map);
+        // clear bulk calculation flag and show completion message
+        if self.is_bulk_token_calculation {
+          self.is_bulk_token_calculation = false;
+          let selected_count = file_utils::get_selected_files(&self.state.file_tree).len();
+          self.set_status_message(format!("✓ Calculated tokens for {} files", selected_count));
+        }
+      } else {
+        // still have pending calculations, show progress
+        let completed = self.state.individual_token_counts.values().filter(|v| v.is_some()).count();
+        let total = completed + self.pending_token_calculations.len();
+
+        if self.is_bulk_token_calculation {
+          self.set_status_message(format!("Calculating tokens... {}/{}", completed, total));
+        }
+
+        // recalculate partial totals for feedback
+        self.recalculate_partial_token_totals();
       }
     }
 
     processed_any
+  }
+
+  /// Recalculates totals when all calculations are complete.
+  fn recalculate_final_token_totals(&mut self) {
+    // recalculate total token count
+    let selected_files = file_utils::get_selected_files(&self.state.file_tree);
+    let mut total_tokens = 0;
+
+    for file_path in &selected_files {
+      if let Some(Some(token_count)) = self.state.individual_token_counts.get(file_path) {
+        total_tokens += token_count;
+      }
+    }
+
+    self.token_count = total_tokens;
+
+    // recalculate directory token counts from scratch
+    self.recalculate_directory_token_counts();
+  }
+
+  /// Recalculates partial token totals for feedback during calculations.
+  fn recalculate_partial_token_totals(&mut self) {
+    // only count files that have completed calculations
+    let selected_files = file_utils::get_selected_files(&self.state.file_tree);
+    let mut total_tokens = 0;
+
+    for file_path in &selected_files {
+      if let Some(Some(token_count)) = self.state.individual_token_counts.get(file_path) {
+        total_tokens += token_count;
+      }
+    }
+
+    self.token_count = total_tokens;
+
+    // recalculate directory token counts
+    self.recalculate_directory_token_counts();
   }
 
   /// Processes backend execution results from the background task (non-blocking).
@@ -607,6 +713,16 @@ impl App {
         }
         return Ok(true);
       }
+      KeyCode::Char('t') if self.state.repomix_options.backend == crate::types::Backend::Repomix => {
+        // toggle file tree
+        self.state.repomix_options.file_tree = !self.state.repomix_options.file_tree;
+        if let Err(e) = self.save_repomix_options() {
+          self.set_status_message(format!("Error: config save error {}", e));
+        } else {
+          self.set_status_message(format!("File tree: {}", if self.state.repomix_options.file_tree { "enabled" } else { "disabled" }));
+        }
+        return Ok(true);
+      }
       // global bulk operations (will work regardless of focus)
       KeyCode::Char('E') => {
         // expand all directories
@@ -630,14 +746,21 @@ impl App {
         // select all visible items (files and directories)
         match crate::file_utils::select_all_visible_files(&mut self.state.file_tree, &self.state.visible_paths) {
           Ok(()) => {
-            self.set_status_message("Selected all items".to_string());
+            // clear token cache
+            self.state.individual_token_counts.clear();
+            self.pending_token_calculations.clear();
+            // set bulk calculation flag
+            self.is_bulk_token_calculation = true;
+            // allow status messages
+            self.suppress_status_messages = false;
+            self.set_status_message("Selected all items - calculating tokens...".to_string());
           }
           Err(e) => {
             self.set_status_message(format!("Error selecting items: {}", e));
           }
         }
-        // update token count since selections changed
-        if let Err(e) = self.update_token_count_debounced() {
+        // force token count update without debouncing
+        if let Err(e) = self.update_token_count_non_blocking() {
           self.set_status_message(format!("Error: token count error {}", e));
         }
         return Ok(true);
@@ -645,11 +768,14 @@ impl App {
       KeyCode::Char('U') => {
         // unselect all items
         crate::file_utils::unselect_all_items(&mut self.state.file_tree);
+        // clear token cache
+        self.state.individual_token_counts.clear();
+        self.pending_token_calculations.clear();
+        self.token_count = 0;
+        self.is_bulk_token_calculation = false;
+        self.suppress_status_messages = false;
         self.set_status_message("Unselected all items".to_string());
-        // update token count since selections changed
-        if let Err(e) = self.update_token_count_debounced() {
-          self.set_status_message(format!("Error: token count error {}", e));
-        }
+        // no need to update token count since we know it's 0
         return Ok(true);
       }
       _ => {}
@@ -662,9 +788,26 @@ impl App {
     if input_handled {
       // check if key was a selection-changing key
       match key.code {
-        KeyCode::Char(' ') | KeyCode::Char('h') | KeyCode::Char('l') | KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down | KeyCode::Char('j') | KeyCode::Char('k') => {
-          // update token count
+        KeyCode::Char(' ') => {
+          // space key toggles selection, so update token count
+          self.suppress_status_messages = false;
           self.update_token_count_debounced()?;
+        }
+        KeyCode::Char('h') | KeyCode::Char('l') | KeyCode::Left | KeyCode::Right => {
+          // h/l and arrow keys can toggle directory expansion, which might affect visible selections
+          // but don't trigger token recalculation unless selections changed
+          // only update if in bulk calculation
+          if self.is_bulk_token_calculation {
+            self.update_token_count_debounced()?;
+          }
+        }
+        KeyCode::Up | KeyCode::Down | KeyCode::Char('j') | KeyCode::Char('k') => {
+          // navigation keys don't change selections, so don't update token count
+          // clear any existing calculation messages and suppress new ones
+          if self.status_message.contains("Calculating tokens") && !self.is_bulk_token_calculation {
+            self.clear_status_message();
+          }
+          self.suppress_status_messages = true;
         }
         _ => {}
       }
@@ -874,6 +1017,7 @@ impl App {
       repomix_options: self.state.repomix_options.clone(),
       selected_files,
       root_path: self.state.root_path.clone(),
+      file_tree: self.state.file_tree.clone(),
       request_id,
       cancellation_token: self.cancellation_token.clone(),
     };
@@ -890,8 +1034,29 @@ impl App {
   /// Performs periodic updates.
   fn periodic_update(&mut self) {
     // clear old status messages
-    if !self.status_message.is_empty() && !self.is_processing && self.status_updated_at.elapsed() > Duration::from_secs(3) {
-      self.status_message.clear();
+    if !self.status_message.is_empty() && !self.is_processing {
+      let should_clear = if self.is_bulk_token_calculation {
+        // keep bulk calculation messages longer (5 seconds)
+        self.status_updated_at.elapsed() > Duration::from_secs(5)
+      } else if self.status_message.contains("Calculating tokens") {
+        // clear token calculation messages after 1 second
+        self.status_updated_at.elapsed() > Duration::from_secs(1)
+      } else if self.status_message.starts_with("✓") {
+        // clear completion messages after 2 seconds
+        self.status_updated_at.elapsed() > Duration::from_secs(2)
+      } else {
+        // clear other messages normally (3 seconds)
+        self.status_updated_at.elapsed() > Duration::from_secs(3)
+      };
+
+      if should_clear {
+        self.status_message.clear();
+      }
+    }
+
+    // clear suppress flag after 2 seconds
+    if self.suppress_status_messages && self.last_update.elapsed() > Duration::from_secs(2) {
+      self.suppress_status_messages = false;
     }
   }
 
@@ -899,6 +1064,11 @@ impl App {
   fn set_status_message(&mut self, message: String) {
     self.status_message = message;
     self.status_updated_at = Instant::now();
+  }
+
+  /// Clears the current status message.
+  fn clear_status_message(&mut self) {
+    self.status_message.clear();
   }
 
   /// Expands the root directory to show initial files.
@@ -946,9 +1116,12 @@ impl App {
 
   /// Saves the current repomix options to persistent configuration.
   pub fn save_repomix_options(&mut self) -> Result<()> {
-    self
-      .config
-      .update_repomix_options(self.state.repomix_options.compress, self.state.repomix_options.remove_comments, self.state.repomix_options.output_format.clone())?;
+    self.config.update_repomix_options(
+      self.state.repomix_options.compress,
+      self.state.repomix_options.remove_comments,
+      self.state.repomix_options.file_tree,
+      self.state.repomix_options.output_format.clone(),
+    )?;
     Ok(())
   }
 
@@ -1012,6 +1185,7 @@ impl App {
                         &request.selected_files,
                         &request.repomix_options,
                         &request.root_path,
+                        &request.file_tree,
                     ).await
                 } => {
                     match result {

@@ -50,8 +50,13 @@ fn render_configuration_section(frame: &mut Frame, area: Rect, app_state: &AppSt
   let remove_comments_symbol = if options.remove_comments { "●" } else { "○" };
   let remove_comments_color = if options.remove_comments { Color::Green } else { Color::Gray };
 
+  let file_tree_symbol = if options.file_tree { "●" } else { "○" };
+  let file_tree_color = if options.file_tree { Color::Green } else { Color::Gray };
+
   let options_content = vec![
     Span::raw("Options: "),
+    Span::styled(file_tree_symbol, Style::default().fg(file_tree_color)),
+    Span::raw(" File Tree (t) │ "),
     Span::styled(compress_symbol, Style::default().fg(compress_color)),
     Span::raw(" Compress (c) │ "),
     Span::styled(remove_comments_symbol, Style::default().fg(remove_comments_color)),
