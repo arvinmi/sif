@@ -7,7 +7,7 @@ authors = ["Arvin <hello@arvinmir.com>"]
 license = "MIT"
 repository = "https://github.com/arvinmi/siff"
 readme = "README.md"
-keywords = ["repomix", "yek", "file-tree"]
+keywords = ["serialization", "parsing", "tui", "git"]
 categories = ["development-tools", "command-line-utilities"]
 
 [dependencies]
