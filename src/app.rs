@@ -43,8 +43,6 @@ pub struct App {
   pub config: SifConfig,
   /// Repomix manager for isolated repomix execution (lazy)
   pub repomix: Option<Repomix>,
-  /// Current backend being used
-  pub current_backend: Backend,
   /// Sender for token calculation requests
   token_request_sender: mpsc::UnboundedSender<PathBuf>,
   /// Receiver for token calculation results
@@ -153,7 +151,6 @@ impl App {
       token_count: 0,
       config,
       repomix,
-      current_backend: effective_backend,
       token_request_sender,
       token_result_receiver,
       backend_request_sender,
