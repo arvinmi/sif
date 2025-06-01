@@ -4,14 +4,9 @@ use crate::types::{AppState, Focus};
 use ratatui::{widgets::ListState, Frame};
 
 /// Main UI state that holds all component states.
+#[derive(Default)]
 pub struct UIState {
   pub file_tree_list_state: ListState,
-}
-
-impl Default for UIState {
-  fn default() -> Self {
-    Self { file_tree_list_state: ListState::default() }
-  }
 }
 
 /// Renders the complete UI.
@@ -25,12 +20,9 @@ pub fn render_app(terminal_frame: &mut Frame, app_state: &AppState, ui_state: &m
 /// Routes input to the appropriate component based on current focus.
 pub fn handle_input(app_state: &mut AppState, _ui_state: &mut UIState, key: crossterm::event::KeyEvent) -> bool {
   // global shortcuts that work regardless of focus (r)
-  match key.code {
-    crossterm::event::KeyCode::Char('r') => {
-      // run repomixm, handled by the main app loop
-      return false;
-    }
-    _ => {}
+  if let crossterm::event::KeyCode::Char('r') = key.code {
+    // run repomixm, handled by the main app loop
+    return false;
   }
 
   // route input based on current focus (file tree)

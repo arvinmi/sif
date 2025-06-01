@@ -157,16 +157,16 @@ mod tests {
   #[test]
   fn test_cli_parsing() {
     // test default case
-    let cli = Cli::parse_from(&["siff"]);
+    let cli = Cli::parse_from(["siff"]);
     assert!(cli.directory.is_none());
     assert!(!cli.verbose);
 
     // test with directory
-    let cli = Cli::parse_from(&["siff", "/tmp"]);
+    let cli = Cli::parse_from(["siff", "/tmp"]);
     assert_eq!(cli.directory, Some(PathBuf::from("/tmp")));
 
     // test with verbose flag
-    let cli = Cli::parse_from(&["siff", "--verbose"]);
+    let cli = Cli::parse_from(["siff", "--verbose"]);
     assert!(cli.verbose);
   }
 }

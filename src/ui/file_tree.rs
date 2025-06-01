@@ -380,7 +380,7 @@ pub fn handle_file_tree_input(app_state: &mut AppState, key: crossterm::event::K
 fn handle_selection_key(app_state: &mut AppState, selected_path: PathBuf) {
   if let Some(_node) = app_state.file_tree.get(&selected_path) {
     // toggle selection for both files and directories
-    if let Err(_) = crate::file_utils::toggle_selection_recursive(&mut app_state.file_tree, &selected_path) {
+    if crate::file_utils::toggle_selection_recursive(&mut app_state.file_tree, &selected_path).is_err() {
       // silently handle errors - don't block UI ops
     }
   }

@@ -22,7 +22,7 @@ async fn get_shared_encoder() -> Result<Arc<CoreBPE>> {
       Ok(Arc::new(encoder))
     })
     .await
-    .map(|encoder| encoder.clone())
+    .cloned()
 }
 
 /// Gets or creates the shared semaphore for limiting concurrent tokenization.

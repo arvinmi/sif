@@ -141,7 +141,7 @@ impl Repomix {
     self.download_status = DownloadStatus::Downloading(format!("Installing repomix {}...", self.version));
 
     let npm_install = Command::new("npm")
-      .args(&["install", "--no-audit", "--no-fund", "--silent"])
+      .args(["install", "--no-audit", "--no-fund", "--silent"])
       .current_dir(&self.cache_dir)
       .output()
       .await
@@ -397,7 +397,7 @@ impl Repomix {
       let filename = relative_path.file_name().and_then(|name| name.to_str()).unwrap_or("").to_string();
 
       if !filename.is_empty() {
-        dir_files.entry(parent_dir.to_path_buf()).or_insert_with(Vec::new).push(filename);
+        dir_files.entry(parent_dir.to_path_buf()).or_default().push(filename);
       }
     }
 

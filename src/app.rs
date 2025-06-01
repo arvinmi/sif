@@ -191,10 +191,10 @@ impl App {
 
     // clean up cache, remove entries for files that are no longer selected
     let mut paths_to_remove = Vec::new();
-    for (path, _) in &self.state.individual_token_counts {
+    for path in self.state.individual_token_counts.keys() {
       if let Some(node) = self.state.file_tree.get(path) {
         // remove if file is not selected and not a directory with selected descendants
-        if !node.is_selected && !(node.is_directory && self.has_selected_descendants(path)) {
+        if !(node.is_selected || node.is_directory && self.has_selected_descendants(path)) {
           paths_to_remove.push(path.clone());
         }
       } else {
@@ -385,7 +385,7 @@ impl App {
       files
     };
 
-      // clear pending calculations and start fresh
+    // clear pending calculations and start fresh
     self.pending_token_calculations.clear();
 
     // group files by directory for batching
@@ -401,7 +401,7 @@ impl App {
 
         // group by parent directory for batching
         if let Some(parent) = file_path.parent() {
-          directory_batches.entry(parent.to_path_buf()).or_insert_with(Vec::new).push(file_path);
+          directory_batches.entry(parent.to_path_buf()).or_default().push(file_path);
         } else {
           individual_files.push(file_path);
         }
@@ -459,10 +459,7 @@ impl App {
       .collect();
 
     for dir_path in relevant_dirs {
-      if !self.state.individual_token_counts.contains_key(&dir_path) {
-        // mark directory for calculation from files
-        self.state.individual_token_counts.insert(dir_path, Some(0));
-      }
+      self.state.individual_token_counts.entry(dir_path).or_insert(Some(0));
     }
   }
 
@@ -568,7 +565,7 @@ impl App {
       // handle the result
       if result.success {
         // successful execution
-        let message = if result.message.len() > 100 { format!("{}...", &result.message[..100]) } else { format!("{}", result.message) };
+        let message = if result.message.len() > 100 { format!("{}...", &result.message[..100]) } else { result.message.to_string() };
         self.set_status_message(message);
 
         // if an output file was created, print it
@@ -886,13 +883,13 @@ impl App {
                 }
               } else {
                 // clicked on directory name, then toggle selection
-                if let Err(_) = crate::file_utils::toggle_selection_recursive(&mut self.state.file_tree, &clicked_path) {
+                if crate::file_utils::toggle_selection_recursive(&mut self.state.file_tree, &clicked_path).is_err() {
                   // silently handle errors
                 }
               }
             } else {
               // for files, toggle selection
-              if let Err(_) = crate::file_utils::toggle_selection_recursive(&mut self.state.file_tree, &clicked_path) {
+              if crate::file_utils::toggle_selection_recursive(&mut self.state.file_tree, &clicked_path).is_err() {
                 // silently handle errors
               }
             }
@@ -1023,7 +1020,7 @@ impl App {
     };
 
     // send request to background thread (non-blocking)
-    if let Err(_) = self.backend_request_sender.send(request) {
+    if self.backend_request_sender.send(request).is_err() {
       self.is_processing = false;
       self.set_status_message("Failed to start backend execution".to_string());
     }
@@ -1147,14 +1144,11 @@ impl App {
             // send result back to main thread
             if result_sender.send((file_path, count)).is_err() {
               // main thread has closed, exit
-              return;
             }
           }
           Err(_) => {
             // send 0 for files that can't be read
-            if result_sender.send((file_path, 0)).is_err() {
-              return;
-            }
+            if result_sender.send((file_path, 0)).is_err() {}
           }
         }
       });
@@ -1258,7 +1252,6 @@ impl App {
         // send result back to main thread (non-blocking)
         if result_sender.send(result).is_err() {
           // main thread has closed, exit
-          return;
         }
       });
     }
@@ -1300,7 +1293,7 @@ pub fn restore_terminal(_terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) 
   std::thread::sleep(std::time::Duration::from_millis(100));
 
   // disable raw mode
-  if let Err(_) = disable_raw_mode() {}
+  let _ = disable_raw_mode().is_err();
 
   // final flush
   let _ = io::stdout().flush();

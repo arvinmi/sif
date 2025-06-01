@@ -87,7 +87,7 @@ fn build_parent_child_relationships(file_tree: &mut HashMap<PathBuf, FileNode>, 
           // files second
           (false, true) => std::cmp::Ordering::Greater,
           // same type, alphabetical
-          _ => a_name.cmp(&b_name),
+          _ => a_name.cmp(b_name),
         }
       });
     }
@@ -218,7 +218,7 @@ fn is_text_file(path: &Path) -> bool {
   match path.extension().and_then(|ext| ext.to_str()) {
     Some(_ext) => {
       // if has extension, include it
-      return true;
+      true
     }
     None => {
       // if there is no extension, check if it's a known text file
@@ -266,9 +266,9 @@ fn is_text_file(path: &Path) -> bool {
       }
 
       // assume text if can't detect otherwise
-      return true;
+      true
     }
-  };
+  }
 }
 
 /// Toggles selection of a file or directory.
@@ -400,7 +400,7 @@ pub fn generate_file_tree_text(file_tree: &HashMap<PathBuf, FileNode>, root_path
           // files second
           (false, true) => std::cmp::Ordering::Greater,
           // alphabetical within same type
-          _ => a_name.cmp(&b_name),
+          _ => a_name.cmp(b_name),
         }
       });
 
@@ -448,7 +448,7 @@ fn generate_tree_node_recursive(file_tree: &HashMap<PathBuf, FileNode>, node: &F
         // files second
         (false, true) => std::cmp::Ordering::Greater,
         // alphabetical within same type
-        _ => a_name.cmp(&b_name),
+        _ => a_name.cmp(b_name),
       }
     });
 

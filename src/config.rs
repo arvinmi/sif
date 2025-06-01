@@ -113,9 +113,9 @@ mod tests {
 
     // test deserialization
     let deserialized: SifConfig = serde_json::from_str(&json).unwrap();
-    assert_eq!(deserialized.compress, true);
-    assert_eq!(deserialized.remove_comments, false);
-    assert_eq!(deserialized.include_file_tree, true);
+    assert!(deserialized.compress);
+    assert!(!deserialized.remove_comments);
+    assert!(deserialized.include_file_tree);
     assert_eq!(deserialized.output_format, OutputFormat::Markdown);
     assert_eq!(deserialized.default_backend, Backend::Yek);
   }
@@ -123,9 +123,9 @@ mod tests {
   #[test]
   fn test_default_config() {
     let config = SifConfig::default();
-    assert_eq!(config.compress, false);
-    assert_eq!(config.remove_comments, false);
-    assert_eq!(config.include_file_tree, true);
+    assert!(!config.compress);
+    assert!(!config.remove_comments);
+    assert!(config.include_file_tree);
     assert_eq!(config.output_format, OutputFormat::Xml);
     assert_eq!(config.default_backend, Backend::Repomix);
   }

@@ -4,16 +4,11 @@ use std::path::PathBuf;
 use tokio_util::sync::CancellationToken;
 
 /// Backend options for file processing.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub enum Backend {
+  #[default]
   Repomix,
   Yek,
-}
-
-impl Default for Backend {
-  fn default() -> Self {
-    Backend::Repomix
-  }
 }
 
 impl Backend {
@@ -27,17 +22,12 @@ impl Backend {
 }
 
 /// Output format options for repomix (not needed for yek).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub enum OutputFormat {
+  #[default]
   PlainText,
   Markdown,
   Xml,
-}
-
-impl Default for OutputFormat {
-  fn default() -> Self {
-    OutputFormat::PlainText
-  }
 }
 
 impl OutputFormat {
@@ -100,15 +90,10 @@ pub struct RepomixOptions {
 
 /// Represents which UI component currently has focus.
 /// TODO: remove old tab ui compoents
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum Focus {
+  #[default]
   FileTree,
-}
-
-impl Default for Focus {
-  fn default() -> Self {
-    Focus::FileTree
-  }
 }
 
 /// Main application state that holds all the data needed for the UI,
