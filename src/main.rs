@@ -14,7 +14,7 @@ use std::path::PathBuf;
 /// Main siff entry point
 #[derive(Parser)]
 #[command(name = "siff")]
-#[command(about = "Interactive file tree with repomix and yek as supported parsing backends")]
+#[command(about = "File browser with repomix and yek as supported parsing backends")]
 #[command(version = "0.1.1")]
 #[command(long_about = None)]
 struct Cli {

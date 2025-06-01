@@ -2,13 +2,13 @@
 name = "siff"
 version = "0.1.1"
 edition = "2021"
-description = "Interactive file browser with repomix and yek as supported parsing backends"
+description = "File browser with repomix and yek as supported parsing backends"
 authors = ["Arvin <hello@arvinmir.com>"]
 license = "MIT"
 repository = "https://github.com/arvinmi/siff"
 readme = "README.md"
 keywords = ["serialization", "parsing", "tui", "git"]
-categories = ["development-tools", "command-line-utilities"]
+categories = ["parsing-tools", "filesystem", "development-tools", "command-line-utilities"]
 
 [dependencies]
 ratatui = "0.24"
