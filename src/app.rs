@@ -41,8 +41,10 @@ pub struct App {
   pub token_count: usize,
   /// Persistent configuration for user preferences
   pub config: SifConfig,
-  /// Repomix manager for isolated repomix execution
-  pub repomix: Repomix,
+  /// Repomix manager for isolated repomix execution (lazy)
+  pub repomix: Option<Repomix>,
+  /// Current backend being used
+  pub current_backend: Backend,
   /// Sender for token calculation requests
   token_request_sender: mpsc::UnboundedSender<PathBuf>,
   /// Receiver for token calculation results
@@ -110,13 +112,14 @@ impl App {
       focus: crate::types::Focus::FileTree,
     };
 
-    // initialize engines
-    let mut repomix = Repomix::new()?;
-
-    // start background download for repomix (if needed)
-    if matches!(effective_backend, Backend::Repomix) {
-      repomix.start_background_download().await;
-    }
+    // initialize repomix only if using repomix backend
+    let repomix = if matches!(effective_backend, Backend::Repomix) {
+      let mut r = Repomix::new()?;
+      r.start_background_download().await;
+      Some(r)
+    } else {
+      None
+    };
 
     // setups for file tree
     // create channels for background token calculation
@@ -133,19 +136,10 @@ impl App {
       Self::token_calculation_task(token_counter_for_task, token_request_receiver, token_result_sender).await;
     });
 
-    // spawn background backend execution task
-    let yek_clone = Yek::new()?;
-    let mut repomix_clone = Repomix::new()?;
-    if matches!(effective_backend, Backend::Repomix) {
-      repomix_clone.start_background_download().await;
-    }
-
-    // wrap in mutex for safer sharing between tasks
-    let yek_shared = Arc::new(yek_clone);
-    let repomix_shared = Arc::new(Mutex::new(repomix_clone));
-
+    // spawn background backend execution task with lazy init
+    let current_backend_for_task = effective_backend.clone();
     tokio::spawn(async move {
-      Self::backend_execution_task(yek_shared, repomix_shared, backend_request_receiver, backend_result_sender).await;
+      Self::backend_execution_task_lazy(current_backend_for_task, backend_request_receiver, backend_result_sender).await;
     });
 
     Ok(Self {
@@ -159,6 +153,7 @@ impl App {
       token_count: 0,
       config,
       repomix,
+      current_backend: effective_backend,
       token_request_sender,
       token_result_receiver,
       backend_request_sender,
@@ -973,7 +968,7 @@ impl App {
 
     // for repomix, check download status first
     if matches!(self.state.repomix_options.backend, Backend::Repomix) {
-      let download_status = self.repomix.download_status().clone();
+      let download_status = self.repomix.as_ref().unwrap().download_status().clone();
       match download_status {
         crate::repomix_integration::DownloadStatus::Downloading(msg) => {
           self.set_status_message(format!("Downloading: {}", msg));
@@ -981,13 +976,13 @@ impl App {
         }
         crate::repomix_integration::DownloadStatus::Failed(err) => {
           // try to restart download
-          self.repomix.start_background_download().await;
+          self.repomix.as_mut().unwrap().start_background_download().await;
           self.set_status_message(format!("Repomix download failed: {}", err));
           return Ok(());
         }
         crate::repomix_integration::DownloadStatus::NotStarted => {
           // start download
-          self.repomix.start_background_download().await;
+          self.repomix.as_mut().unwrap().start_background_download().await;
           self.set_status_message("Starting repomix download...".to_string());
           return Ok(());
         }
@@ -1087,23 +1082,23 @@ impl App {
 
   /// Updates repomix background download and returns true if status changed.
   async fn update_repomix_download(&mut self) -> Result<bool> {
-    let status_changed = self.repomix.update_background_download().await;
+    let status_changed = self.repomix.as_mut().unwrap().update_background_download().await;
 
     if status_changed {
       // update status message
-      match self.repomix.download_status() {
+      match self.repomix.as_ref().unwrap().download_status() {
         crate::repomix_integration::DownloadStatus::Ready => {
           self.set_status_message("Repomix ready!".to_string());
         }
         crate::repomix_integration::DownloadStatus::Downloading(msg) => {
-          self.set_status_message(format!("Downloading: {}", msg));
+          self.set_status_message(format!("Downloading repomix: {}", msg));
         }
         crate::repomix_integration::DownloadStatus::Failed(err) => {
           self.set_status_message(format!("Repomix download failed: {}", err));
         }
         crate::repomix_integration::DownloadStatus::NotStarted => {
           // restart download if failed
-          self.repomix.start_background_download().await;
+          self.repomix.as_mut().unwrap().start_background_download().await;
         }
       }
     }
@@ -1157,94 +1152,162 @@ impl App {
 
   /// Background task that handles backend execution requests.
   /// Runs independently from the main UI thread, supports immediate cancellation.
-  async fn backend_execution_task(yek: Arc<Yek>, repomix: Arc<Mutex<Repomix>>, mut request_receiver: mpsc::UnboundedReceiver<BackendRequest>, result_sender: mpsc::UnboundedSender<BackendResult>) {
+  async fn backend_execution_task_lazy(_current_backend: Backend, mut request_receiver: mpsc::UnboundedReceiver<BackendRequest>, result_sender: mpsc::UnboundedSender<BackendResult>) {
+    // lazily initialize backends only when needed
+    let mut yek_instance: Option<Arc<Yek>> = None;
+    let mut repomix_instance: Option<Arc<Mutex<Repomix>>> = None;
+
+    // process requests until the receiver is closed
     while let Some(request) = request_receiver.recv().await {
       let cancellation_token = request.cancellation_token.clone();
       let result_sender = result_sender.clone();
 
-      // clone the arc references
-      let yek_clone = yek.clone();
-      let repomix_clone = repomix.clone();
+      // initialize the required backend if not already done
+      match request.backend {
+        Backend::Repomix => {
+          if repomix_instance.is_none() {
+            match Repomix::new() {
+              Ok(mut r) => {
+                r.start_background_download().await;
+                repomix_instance = Some(Arc::new(Mutex::new(r)));
+              }
+              Err(e) => {
+                let _ = result_sender.send(BackendResult {
+                  success: false,
+                  message: String::new(),
+                  output_file: None,
+                  error: Some(format!("Failed to initialize repomix: {}", e)),
+                  request_id: request.request_id,
+                });
+                continue;
+              }
+            }
+          }
+        }
+        Backend::Yek => {
+          if yek_instance.is_none() {
+            match Yek::new() {
+              Ok(y) => {
+                yek_instance = Some(Arc::new(y));
+              }
+              Err(e) => {
+                let _ = result_sender.send(BackendResult {
+                  success: false,
+                  message: String::new(),
+                  output_file: None,
+                  error: Some(format!("Failed to initialize yek: {}", e)),
+                  request_id: request.request_id,
+                });
+                continue;
+              }
+            }
+          }
+        }
+      };
+
+      // clone the instances for the spawned task
+      let repomix_clone = repomix_instance.clone();
+      let yek_clone = yek_instance.clone();
 
       // spawn a cancellable task
       tokio::spawn(async move {
         // execute the backend op
         let result = match request.backend {
           Backend::Repomix => {
-            // run repomix with cancellation support
-            tokio::select! {
-                result = async {
-                    let mut manager = repomix_clone.lock().await;
-                    manager.run_isolated_repomix(
-                        &request.selected_files,
-                        &request.repomix_options,
-                        &request.root_path,
-                        &request.file_tree,
-                    ).await
-                } => {
-                    match result {
-                        Ok(output) => BackendResult {
-                            success: true,
-                            message: output,
-                            output_file: request.repomix_options.output_file.map(PathBuf::from),
-                            error: None,
-                            request_id: request.request_id,
-                        },
-                        Err(e) => BackendResult {
-                            success: false,
-                            message: String::new(),
-                            output_file: None,
-                            error: Some(format!("Error: repomix error {}", e)),
-                            request_id: request.request_id,
-                        },
-                    }
-                }
-                _ = cancellation_token.cancelled() => {
-                    // operation was cancelled, the process will be killed by the os
-                    // when the parent task is dropped
-                    BackendResult {
-                        success: false,
-                        message: String::new(),
-                        output_file: None,
-                        error: Some("Operation cancelled".to_string()),
-                        request_id: request.request_id,
-                    }
-                }
+            if let Some(repomix_arc) = repomix_clone {
+              // run repomix with cancellation support
+              tokio::select! {
+                  result = async {
+                      let mut manager = repomix_arc.lock().await;
+                      manager.run_isolated_repomix(
+                          &request.selected_files,
+                          &request.repomix_options,
+                          &request.root_path,
+                          &request.file_tree,
+                      ).await
+                  } => {
+                      match result {
+                          Ok(output) => BackendResult {
+                              success: true,
+                              message: output,
+                              output_file: request.repomix_options.output_file.map(PathBuf::from),
+                              error: None,
+                              request_id: request.request_id,
+                          },
+                          Err(e) => BackendResult {
+                              success: false,
+                              message: String::new(),
+                              output_file: None,
+                              error: Some(format!("Error: repomix error {}", e)),
+                              request_id: request.request_id,
+                          },
+                      }
+                  }
+                  _ = cancellation_token.cancelled() => {
+                      // operation was cancelled, the process will be killed by the os
+                      // when the parent task is dropped
+                      BackendResult {
+                          success: false,
+                          message: String::new(),
+                          output_file: None,
+                          error: Some("Operation cancelled".to_string()),
+                          request_id: request.request_id,
+                      }
+                  }
+              }
+            } else {
+              BackendResult {
+                success: false,
+                message: String::new(),
+                output_file: None,
+                error: Some("Repomix not initialized".to_string()),
+                request_id: request.request_id,
+              }
             }
           }
           Backend::Yek => {
-            // run yek with cancellation support
-            tokio::select! {
-                result = yek_clone.run_yek_integrated(&request.selected_files, &request.root_path) => {
-                    match result {
-                        Ok(output) => BackendResult {
-                            success: true,
-                            message: output,
-                            // yek doesn't create output files
-                            output_file: None,
-                            error: None,
-                            request_id: request.request_id,
-                        },
-                        Err(e) => BackendResult {
-                            success: false,
-                            message: String::new(),
-                            output_file: None,
-                            error: Some(format!("Error: yek error {}", e)),
-                            request_id: request.request_id,
-                        },
-                    }
-                }
-                _ = cancellation_token.cancelled() => {
-                    // operation was cancelled, the process will be killed by the os
-                    // when the parent task is dropped
-                    BackendResult {
-                        success: false,
-                        message: String::new(),
-                        output_file: None,
-                        error: Some("Operation cancelled".to_string()),
-                        request_id: request.request_id,
-                    }
-                }
+            if let Some(yek_arc) = yek_clone {
+              // run yek with cancellation support
+              tokio::select! {
+                  result = yek_arc.run_yek_integrated(&request.selected_files, &request.root_path) => {
+                      match result {
+                          Ok(output) => BackendResult {
+                              success: true,
+                              message: output,
+                              // yek doesn't create output files
+                              output_file: None,
+                              error: None,
+                              request_id: request.request_id,
+                          },
+                          Err(e) => BackendResult {
+                              success: false,
+                              message: String::new(),
+                              output_file: None,
+                              error: Some(format!("Error: yek error {}", e)),
+                              request_id: request.request_id,
+                          },
+                      }
+                  }
+                  _ = cancellation_token.cancelled() => {
+                      // operation was cancelled, the process will be killed by the os
+                      // when the parent task is dropped
+                      BackendResult {
+                          success: false,
+                          message: String::new(),
+                          output_file: None,
+                          error: Some("Operation cancelled".to_string()),
+                          request_id: request.request_id,
+                      }
+                  }
+              }
+            } else {
+              BackendResult {
+                success: false,
+                message: String::new(),
+                output_file: None,
+                error: Some("Yek not initialized".to_string()),
+                request_id: request.request_id,
+              }
             }
           }
         };

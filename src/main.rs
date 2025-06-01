@@ -15,7 +15,7 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(name = "siff")]
 #[command(about = "Interactive file tree with repomix and yek as supported parsing backends")]
-#[command(version = "0.1.0")]
+#[command(version = "0.1.1")]
 #[command(long_about = None)]
 struct Cli {
   /// Directory to scan for files (defaults to current dir)
@@ -90,7 +90,7 @@ async fn main() -> Result<()> {
         eprintln!("This is a one-time setup and subsequent runs will be fast.");
       }
       types::Backend::Yek => {
-        eprintln!("\nSif includes yek integration but failed to initialize.");
+        eprintln!("\nSiff includes yek integration but failed to initialize.");
         eprintln!("This is likely a build or installation issue.");
         eprintln!("Please try reinstalling Siff:");
         eprintln!("  cargo install --force siff");
