@@ -8,7 +8,7 @@ license = "MIT"
 repository = "https://github.com/arvinmi/siff"
 readme = "README.md"
 keywords = ["serialization", "parsing", "tui", "git"]
-categories = ["parsing-tools", "filesystem", "development-tools", "command-line-utilities"]
+categories = ["parsing", "filesystem", "development-tools", "command-line-utilities"]
 
 [dependencies]
 ratatui = "0.24"
