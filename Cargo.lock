@@ -722,7 +722,7 @@ dependencies = [
 
 [[package]]
 name = "siff"
-version = "0.1.1-alpha.1"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
